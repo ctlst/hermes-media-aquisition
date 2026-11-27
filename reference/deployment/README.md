@@ -108,11 +108,15 @@ cp -R agent/plex-backend/scripts agent/plex-backend/references ~/.hermes/skills/
 ssh-keygen -t ed25519 -f ~/.ssh/agent-media -C agent-media
 ```
 
-The noninteractive client needs an unattended key or an available SSH agent. On the media host, append the following entry to the media operator’s `~/.ssh/authorized_keys`, replacing the sample key field with the new public key. Preserve other entries. The forced command shown here follows the installed key restrictions.
+The noninteractive client needs an unattended key or an available SSH agent. Give the host operator the **public** file `~/.ssh/agent-media.pub`. Keep the private file `~/.ssh/agent-media` on the VM. On the media host, the operator adds one line to their account’s `~/.ssh/authorized_keys`. Use the full contents of the public file after the options, as shown by the placeholder below. If this public key already has an entry, edit that line so the key is authorized only with the restrictions. Leave other keys alone.
 
 ```text
 restrict,command="/usr/bin/python3 /opt/agent-media/media_backend.py" ssh-ed25519 PUBLIC_KEY_FROM_AGENT agent-media
 ```
+
+Use the absolute path of the installed backend. OpenSSH’s `command=` option runs that command whenever this key authenticates and ignores the command requested by the client. The separate `restrict` option disables terminal allocation, port forwarding, agent forwarding, X11 forwarding and the user SSH startup file. Keep the backend, its parent directory and `authorized_keys` outside any share writable by Hermes. [OpenSSH authorized key options](https://man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT)
+
+The client sends JSON on standard input. The backend rejects unknown actions, encodes search terms for the Plex HTTP API, and passes file paths to filesystem functions. Request text never becomes a shell command. The allowed operations include querying status and libraries, searching and scanning Plex, listing torrents and their files, adding or starting or stopping a torrent, and importing completed media. [VM client](agent/plex-backend/scripts/media.py) · [Host backend](media-host/media_backend.py)
 
 From a trusted administrator connection obtain the media host’s SSH host public key and fingerprint. Install its verified public key on the agent as a known-hosts line for the exact hostname in media.py, in `~/.ssh/agent-media-known-hosts`. Keep `StrictHostKeyChecking=yes`. The private SSH key stays on the agent. Test through the same entry point Hermes uses.
 
@@ -122,6 +126,16 @@ python3 "$client" status
 python3 "$client" libraries
 python3 "$client" search --query "Example Film"
 ```
+
+To check the forced command from the VM, request the harmless host command `whoami` while sending a read-only backend request. With the restrictions in effect, the response is the backend’s JSON library list. A plain account name means SSH executed the requested command and the operator should recheck the key entry. Substitute the account and hostname configured in `media.py`.
+
+```sh
+printf '%s\n' '{"action":"libraries"}' | ssh -T -o BatchMode=yes -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/agent-media-known-hosts" \
+  -i "$HOME/.ssh/agent-media" mediaops@media-host.example whoami
+```
+
+To revoke this key for future connections, the host operator removes its line from `authorized_keys`.
 
 ### 5. Mount the optional shares
 

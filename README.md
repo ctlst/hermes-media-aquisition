@@ -28,3 +28,9 @@ cp -R agent/skills/plex-torrent agent/skills/game-search "$skills/"
 ```
 
 Ask Hermes: **“Walk me through giving you access to my Plex Movies folder. I want to browse it.”** Browsing needs read and traversal access. For importing, give Hermes access to the completed source file and write permission on the intended library destination. Use the download path visible to Hermes; `/downloads` is the path inside qBittorrent. Host SSH credentials are unnecessary for both storage layouts. [Directory walkthrough and VM test](docs/fresh-vm-test.md)
+
+### How our VM calls the media host
+
+In our deployment, Hermes can ask the media host to queue a torrent, import a completed file, or scan Plex. The VM sends a JSON request over SSH. The host associates the VM’s dedicated key with one fixed command that runs `media_backend.py` for that request. Systemd supervises the download containers separately. [Restricted SSH setup](reference/deployment/README.md#4-opt-in-to-backend-access-from-the-vm) · [Backend code](reference/deployment/media-host/media_backend.py)
+
+The host enforces the restriction. The backend accepts a fixed list of actions and reads request fields as data. For example, a quote in a movie title stays part of the Plex search query. Anyone holding the private key can still perform the permitted actions, including stopping torrents and importing media. A mounted share has its own filesystem permissions.
