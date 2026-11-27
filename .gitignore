@@ -9,3 +9,5 @@ credentials-agent-media
 agent-media-known-hosts
 __pycache__/
 .DS_Store
+/examples/homelab/gluetun/
+/examples/homelab/qbittorrent/

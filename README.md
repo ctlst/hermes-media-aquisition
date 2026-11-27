@@ -1,50 +1,30 @@
-# Hermes media skills
+# Hermes, Plex and VPN downloads
 
-Use Hermes to browse a Plex directory, import a completed film or show, or search for a game. Install only the skills you need into an existing Hermes installation.
+```text
+qBittorrent container → tun0 in the Gluetun container’s network namespace → VPN → peers
 
-| Where Hermes runs | What to copy | What the operator supplies |
-| --- | --- | --- |
-| On the Plex host, with ordinary networking | The everyday Plex or game-search skill. Add the host skill if you want a guided permission check. | The actual library path and the access you want to grant. Game search alone needs Python 3 and access to the index. |
-| In a VM or container | The same everyday skills in the guest. Give the host skill to an agent on the media host if needed. | For browsing, the operator exports one media folder read-only and mounts it in the guest. Online game search can run with no host share at all. |
-| Separate agent with VPN-isolated downloads | The everyday skills, plus the host skill if useful. | Your existing download integration, or the optional reference deployment with Gluetun, qBittorrent and a restricted SSH backend. |
+qBittorrent → /downloads → completed files on disk
+Hermes → local directory or mounted share → Plex media files
+```
 
-## Our homelab example with qBittorrent and Gluetun
+**Downloads.** Run qBittorrent and Gluetun together on the Docker host. Gluetun owns the VPN tunnel and firewall. qBittorrent uses the same network namespace and binds torrent traffic to `tun0`. If the tunnel drops, the firewall blocks direct internet access and transfers stall. The host setup includes an empty-queue test that drops the tunnel while qBittorrent keeps running, checks that traffic is blocked, and verifies recovery. [Set up the containers](examples/homelab/README.md) · [Compose file](examples/homelab/compose.yml)
 
-On our media host, Gluetun establishes an OpenVPN tunnel. qBittorrent shares its network namespace, waits for Gluetun’s health check, and binds torrent traffic to `tun0`. The qBittorrent Web UI is published at `127.0.0.1:18080` on that host. Hermes searches from its own network connection. [Sanitized Compose file](examples/homelab/media-host/compose.yml)
+**Plex files.** The only choice is how Hermes reaches the media directory. Use the folder Plex scans for movies or episodes. The path visible to Plex inside its own container can differ from the path Hermes sees.
 
-To run the download stack under host control, follow steps 1–3 of the example. They cover storage, private VPN credentials, qBittorrent setup and an empty-queue test that drops the tunnel and checks for traffic escaping it. You can stop there and operate qBittorrent on the media host. [Host setup and recovery guide](examples/homelab/README.md)
+| Where the files live | What to give Hermes |
+| --- | --- |
+| Local to the machine running Hermes | The existing media directory, for example `/srv/media/Movies`. Run the access check as the Hermes user. |
+| On a NAS, or outside the Hermes VM | Mount the library share where Hermes runs, for example at `/mnt/plex` inside the VM. Give Hermes the mounted path, such as `/mnt/plex/Movies`. Verify the source before using it. |
 
-In our deployment we also chose step 4, which gives Hermes a dedicated SSH key restricted to the media backend. That lets the VM request downloads, hardlink completed videos into Plex and trigger library scans. An operator who only wants Hermes to browse can use the read-only share described below.
+### Use the skills
 
-## Run Hermes in a VM without host SSH
-
-For browsing, choose the Movies or TV folder you want Hermes to see. On the host, use your hypervisor to export just that folder read-only. Then mount it read-only inside the VM. An existing SMB share with a read-only server-side grant also works. The host operator handles the export. Hermes runs its checks from inside the guest as its ordinary user.
-
-Tell Hermes: **“My Movies share is mounted at `/mnt/movies` in this VM. Use plex-directory-setup to verify it is the expected read-only share, then list the movie folders.”** Substitute your guest path. If the share is missing, Hermes gives the operator the next step. All host login credentials stay outside the VM. [Tested VM walkthrough](docs/fresh-vm-test.md)
-
-If you want imports while keeping the library read-only in the VM, have the host operator perform the import. If Hermes needs to deliver files, you can give it a separate writable staging folder for that handoff. Online game search needs only the game-search skill and access to the index.
-
-## Copy a skill
-
-Run as the account that operates Hermes. The following assumes a fresh copy of each skill and that you are in the unpacked release directory. If a skill already exists, compare it before copying so local changes are preserved. Start a new chat after installing. For a host-access walkthrough, copy only the first skill. For a local Plex workflow with an already accessible media folder, copy only the Plex skill.
+From the unpacked release, copy the skills you need into the existing Hermes account. Start a new chat. For an existing skill, compare the files before replacing local edits.
 
 ```sh
 skills="${HERMES_HOME:-$HOME/.hermes}/skills"
 mkdir -p "$skills"
-
-# On the machine whose filesystem or mounts you want to inspect
 cp -R host/skills/plex-directory-setup "$skills/"
-
-# On the machine running the everyday Hermes agent (can be the same machine)
-cp -R agent/skills/plex-torrent "$skills/"
-cp -R agent/skills/game-search "$skills/"
+cp -R agent/skills/plex-torrent agent/skills/game-search "$skills/"
 ```
 
-If your host assistant uses a different skill directory, give it the entire `host/skills/plex-directory-setup/` folder. Keep the helper script alongside the skill. In a custom Hermes profile, resolve helper paths relative to the installed skill.
-
-## Walk through directory access
-
-1. Ask the host agent: **“Use plex-directory-setup. Can you walk me through giving Hermes access to my Plex folder?”**
-2. Tell it the exact path and scope, for example: **“Hermes runs here. I only want it to list the Movies directory at /srv/media/Movies.”** If Hermes runs in a VM, tell it both the host path and the path mounted inside the VM, if known.
-3. The agent checks as the intended user. If access is denied, it explains the smallest permission change the operator can make. Ask it to recheck after the change. Listing one directory does not establish permission to read every descendant or import a file.
-4. For everyday use, try **“List the movie folders here,”** **“Import this completed film into Movies,”** or **“Find Linux releases of SuperTuxKart and show the candidates.”** Searching for games does not enqueue a download.
+Ask Hermes: **“Walk me through giving you access to my Plex Movies folder. I want to browse it.”** Browsing needs read and traversal access. For importing, give Hermes access to the completed source file and write permission on the intended library destination. Use the download path visible to Hermes; `/downloads` is the path inside qBittorrent. Host SSH credentials are unnecessary for both storage layouts. [Directory walkthrough and VM test](docs/fresh-vm-test.md)

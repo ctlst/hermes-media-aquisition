@@ -1,0 +1,39 @@
+name: hermes-downloads
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/provider.tcp.ovpn
+      OPENVPN_USER_SECRETFILE: /run/secrets/openvpn_user
+      OPENVPN_PASSWORD_SECRETFILE: /run/secrets/openvpn_password
+      FIREWALL: "on"
+      FIREWALL_INPUT_PORTS: "18080"
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    secrets: [openvpn_user, openvpn_password]
+    ports: ["127.0.0.1:18080:18080/tcp"]
+    volumes:
+      - ./gluetun:/gluetun
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    network_mode: service:gluetun
+    depends_on:
+      gluetun: {condition: service_healthy, restart: true}
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      WEBUI_PORT: "18080"
+    volumes:
+      - ./qbittorrent:/config
+      - type: bind
+        source: ${DOWNLOAD_DIR:?Set DOWNLOAD_DIR to your existing download folder}
+        target: /downloads
+        bind: {create_host_path: false}
+secrets:
+  openvpn_user: {file: ./secrets/openvpn_user}
+  openvpn_password: {file: ./secrets/openvpn_password}

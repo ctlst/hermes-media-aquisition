@@ -52,7 +52,7 @@ In the initial VM mount test, Hermes saw the guest root disk in the mount table 
 
 With the share detached, the revised skill prompted Hermes to use the mount check. The helper reported an actual target of `/`, filesystem `ext4`, and exit status 2. Hermes told the operator, “the host folder is not accessible at the path you specified,” and asked them to identify and mount the correct export.
 
-For this disposable QEMU guest, the host operator had attached a sandbox directory using the following VM launch option. Set `SAMPLE_DIR` to a dedicated test directory on the host. Use your existing share protocol on an established system. The optional homelab example documents Samba.
+For this disposable QEMU guest, the host operator had attached a sandbox directory using the following VM launch option. Set `SAMPLE_DIR` to a dedicated test directory on the host. Use your existing share protocol on an established system. An existing NAS export can also be mounted at the guest path.
 
 ```sh
 -virtfs "local,path=$SAMPLE_DIR,mount_tag=plexsample,security_model=none,readonly=on"
