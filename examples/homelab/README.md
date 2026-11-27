@@ -1,4 +1,6 @@
-# Hermes media server
+# Optional homelab deployment with restricted SSH
+
+Use this deployment if you want the VM to hold a dedicated credential that can call the host media backend. For an isolated VM with a read-only media folder, use the [VM walkthrough](../../docs/fresh-vm-test.md). The Samba templates in this example grant writes to the configured directories.
 
 A Hermes agent can take a request such as “add this film to Plex” or “find the Linux edition of this game.” The two requests share a download client. A film ends up in a Plex library as a hardlink. A game search returns candidates, and a requested game download stays on the downloads share.
 
@@ -87,7 +89,7 @@ Bootstrap configures qBittorrent with a random local password, binds it to `tun0
 
 The live guard on **add** and **start** checks Gluetun health, the current network namespace, the configured interface and the acceptance fingerprint. The fingerprint covers image identities and Compose text. Reverify manually after changing the contents of a bind-mounted VPN profile or firewall configuration. For a populated service, preserve the queue and use a maintenance plan or an isolated empty stack to validate changes. The original verifier explicitly requires an empty queue. The deployed image tags are mutable; record the deployed image IDs when testing.
 
-### 4. Install the Hermes client and pin its SSH connection
+### 4. Opt in to backend access from the VM
 
 On the agent VM, copy the two skill directories into the agent account’s skills directory. Generate a dedicated key as that account if it does not already have one.
 
@@ -95,6 +97,7 @@ On the agent VM, copy the two skill directories into the agent account’s skill
 mkdir -p ~/.hermes/skills ~/.ssh
 chmod 700 ~/.ssh
 cp -R ../../agent/skills/plex-torrent ../../agent/skills/game-search ~/.hermes/skills/
+cp -R agent/plex-backend/scripts agent/plex-backend/references ~/.hermes/skills/plex-torrent/
 ssh-keygen -t ed25519 -f ~/.ssh/agent-media -C agent-media
 ```
 

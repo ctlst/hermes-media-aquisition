@@ -24,6 +24,8 @@ sudo setfacl -m u:hermes:r-x -- /srv/plex-test/Movies
 
 For a real installation, stop when the requested access works. When the owner wants to remove a newly added named grant, the corresponding command is `sudo setfacl -x u:hermes -- /srv/plex-test/Movies`. If that user already had a named entry, restore the previous ACL instead.
 
+The VM operator can follow the rest of this walkthrough with no SSH key for the physical host. The operator attaches the export in the hypervisor and mounts it using the guest console. Hermes checks its own guest path.
+
 **You, in a VM:** “The media is on the host. I expect it at `/mnt/plex-test` inside this VM. Check whether the host share is actually mounted there before telling me we have access.”
 
 The host skill includes a Linux mount check. From the installed skill folder, run `python3 scripts/check_access.py --mountpoint /mnt/plex-test /mnt/plex-test`. For a subdirectory, keep the first argument at the share root and change the second to the directory being checked. Compare the reported source with the export you intended to share. Hermes can inspect the mount and explain the next step to the person who controls the host or guest. An empty directory on the VM’s root filesystem can pass a listing check. Match the mount source and filesystem to the intended export, then run the permission check on the guest path. Read-only access is sufficient for browsing.

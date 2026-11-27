@@ -7,6 +7,10 @@ description: Walk an operator through giving Hermes scoped access to a Plex libr
 
 Start with the person's request. For “Can you give Hermes access to my Plex folder?”, ask for the exact directory, where Hermes runs relative to the files, and whether they want to browse or import. Use details they already gave. If someone asks to be walked through setup, give the next actionable step and wait for its result before proceeding. For a permission check, keep filenames out of terminal output and chat. Use the helper and path-specific metadata commands such as `stat -- /exact/path` or `namei -l -- /exact/path`. Listing a parent exposes sibling names.
 
+## Working from a VM
+
+Guide the person from inside the guest. For browsing, ask the host operator to export just the chosen media directory read-only and the guest operator to mount it read-only. Host administration is a separate action performed at the host or hypervisor. A missing mount or denied path is a handoff to that operator. Do not request a host SSH login, generate a key, or try an SSH connection to resolve a directory-access request. Report both the actual mount source and whether the export is mounted read-only. If the person requested a read-only mount and the check reports a writable mount, explain that discrepancy even if the current user lacks write permission.
+
 ## Choose the check
 
 Use exactly one mode. For a physical host folder requested from inside a VM, run the mount check first. No other listing can establish host folder access.
