@@ -1,0 +1,11 @@
+secrets/
+.env
+.env.*
+*.ovpn
+*.key
+*.pem
+vpn-accepted.json
+credentials-agent-media
+agent-media-known-hosts
+__pycache__/
+.DS_Store
