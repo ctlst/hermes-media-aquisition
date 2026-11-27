@@ -1,146 +1,40 @@
-# Hermes media server
+# Hermes media skills
 
-A Hermes agent can take a request such as “add this film to Plex” or “find the Linux edition of this game.” The two requests share a download client. A film ends up in a Plex library as a hardlink. A game search returns candidates, and a requested game download stays on the downloads share.
+Use Hermes to browse a Plex directory, import a completed film or show, or search for a game. Install only the skills you need into an existing Hermes installation.
 
-## What runs where
+| Where Hermes runs | What to copy | What the operator supplies |
+| --- | --- | --- |
+| On the Plex host, with ordinary networking | The everyday Plex or game-search skill. Add the host skill if you want a guided permission check. | The actual library path and the access you want to grant. Game search alone needs Python 3 and access to the index. |
+| In a VM or container | The same everyday skills in the guest. Give the host skill to an agent on the media host if needed. | A guest-visible mount for file operations or an existing remote media integration. A read-only mount is enough for browsing. |
+| Separate agent with VPN-isolated downloads | The everyday skills, plus the host skill if useful. | Your existing download integration, or the optional reference deployment with Gluetun, qBittorrent and a restricted SSH backend. |
 
-| Component | Job |
-| --- | --- |
-| Hermes agent | Resolves the request, searches for releases, chooses files, and runs the media client. Game and release searches use the agent’s network connection. |
-| SSH client and backend | The client sends one JSON request on standard input. A dedicated key on the agent can invoke a fixed Python program on the media host. The program holds the allowed verbs and reads local credentials. |
-| Gluetun and qBittorrent | qBittorrent joins Gluetun’s network namespace. Gluetun owns the VPN tunnel, firewall and localhost WebUI port. Torrent payload and peer traffic use this namespace. |
-| Plex | The existing server scans its own libraries. The backend reads its API at `127.0.0.1:32400` and creates links on the host filesystem. |
-| Samba | Two optional encrypted shares let Hermes read and write downloads and library files. Write access includes changing files directly; grant it only for the intended directories. |
+## Copy a skill
 
-## What came from the deployment
-
-The media host directory contains sanitized copies of the **installed systemd unit**, **deployed Compose file**, **admin.py**, **media_backend.py**, **test_media.py** and the host’s Samba share definitions. The agent directory includes its deployed **media.py** SSH client and the host’s client-mount template. Hostnames, usernames, container names, datasets, mount paths, profile filename, timezone and the private WebUI port have coordinated example values throughout.
-
-The earlier architecture guide described a reconstructed oneshot unit. The installed unit is **Type=simple**. Its preflight confirms both ZFS datasets using `findmnt`, checks private VPN credential files and validates Compose. Systemd supervises the foreground command `docker compose up --abort-on-container-exit`, retries after 15 seconds and calls `docker compose down` on stop. Both containers have Docker restart policy `no`. Compose waits for the health check provided by the Gluetun image. The running deployment uses a **custom OpenVPN TCP profile**.
-
-The two SKILL.md files condense the deployed workflows for a new installation. **search_games.py** packages the original skill’s manual HTML lookup as a read-only command. **watch.py** adapts the installed progress monitor to accept exact hashes, replacing its private, hard-coded watch list. Live queues, media libraries, credentials, SSH keys, provider configuration and VPN acceptance records are site-specific. Generate or supply those on your own systems.
-
-## Installation
-
-Use a Linux media host with ZFS, Docker Engine, the Docker Compose plugin, systemd, OpenSSH, Python 3.9+ and an existing Plex server. The agent needs Python and OpenSSH. Samba on the host and cifs-utils on the agent are needed only for direct file access. The deployed VPN uses NordVPN service credentials and a provider-issued TCP OpenVPN profile. Other providers may require changes to the credential prompts, secret names or Compose configuration.
-
-### 1. Set the site values
-
-| Example in this archive | Where to set your value |
-| --- | --- |
-| `media-host.example`, account `mediaops` | Agent’s media.py and mount template. Use the media-host account in the unit, forced command and Samba force-user entries. |
-| `tank/media` mounted at `/srv/media` | admin.py preflight, backend roots, Compose, Samba and the systemd mount dependency. Downloads and the Plex library must share one filesystem for hardlinks. |
-| `tank/appdata` mounted at `/srv/appdata` | admin.py preflight, Compose and the unit. Container configuration lives below this mount. |
-| `/opt/agent-media` | Install the host files here or change the unit and SSH forced command together. |
-| Plex sees `/data/VIDEO` | Map the host library directory to this container path. Each managed section must have an existing subdirectory underneath it. For a different mapping update media_backend.py and test_media.py. |
-| User/group IDs `1000:1000`, agent IP `192.0.2.20` | Set the actual media-file owner in Compose and the agent user's IDs in fstab. Replace the documentation IP in Samba with the agent’s LAN address. |
-| WebUI `18080` | Keep it consistent in Compose, the backend URL, Referer and qBittorrent session-cookie name. Keep the published address on loopback. |
-
-### 2. Prepare storage and private configuration on the media host
-
-Use an operator account with Docker access. The unit runs as that account. Confirm the ZFS mounts before creating directories. A child ZFS dataset has its own filesystem even when it sits under the same pool.
+Run as the account that operates Hermes. The following assumes a fresh copy of each skill and that you are in the unpacked release directory. If a skill already exists, compare it before copying so local changes are preserved. Start a new chat after installing. For a host-access walkthrough, copy only the first skill. For a local Plex workflow with an already accessible media folder, copy only the Plex skill.
 
 ```sh
-findmnt -T /srv/media -o TARGET,SOURCE,FSTYPE
-findmnt -T /srv/appdata -o TARGET,SOURCE,FSTYPE
+skills="${HERMES_HOME:-$HOME/.hermes}/skills"
+mkdir -p "$skills"
+
+# On the machine whose filesystem or mounts you want to inspect
+cp -R host/skills/plex-directory-setup "$skills/"
+
+# On the machine running the everyday Hermes agent (can be the same machine)
+cp -R agent/skills/plex-torrent "$skills/"
+cp -R agent/skills/game-search "$skills/"
 ```
 
-After verifying those results, install the host files and create the directories. These example commands assume the accounts and datasets above already exist. Preserve the existing ownership and permissions on an established Plex library.
+If your host assistant uses a different skill directory, give it the entire `host/skills/plex-directory-setup/` folder. Keep the helper script alongside the skill. In a custom Hermes profile, resolve helper paths relative to the installed skill.
 
-```sh
-sudo install -d -m 0700 -o mediaops -g mediaops /opt/agent-media
-sudo install -m 0644 -o mediaops -g mediaops media-host/* /opt/agent-media/
-sudo install -d -o mediaops -g mediaops /srv/media/downloads/agent/{complete,incomplete}
-sudo install -d -o mediaops -g mediaops /srv/appdata/agent-media/{gluetun,qbittorrent}
-```
+## Walk through directory access
 
-Run the brace-expansion commands in Bash. Ensure the operator can create library destinations and hardlink the downloaded files, and Plex can read the results. Compare the device numbers of the download and library directories with `stat -c '%d %n' /srv/media/downloads/agent /srv/media/library`.
+1. Ask the host agent: **“Use plex-directory-setup. Can you walk me through giving Hermes access to my Plex folder?”**
+2. Tell it the exact path and scope, for example: **“Hermes runs here. I only want it to list the Movies directory at /srv/media/Movies.”** If Hermes runs in a VM, tell it both the host path and the path mounted inside the VM, if known.
+3. The agent checks as the intended user. If access is denied, it explains the smallest permission change the operator can make. Ask it to recheck after the change. Listing one directory does not establish permission to read every descendant or import a file.
+4. For everyday use, try **“List the movie folders here,”** **“Import this completed film into Movies,”** or **“Find Linux releases of SuperTuxKart and show the candidates.”** Searching for games does not enqueue a download.
 
-Place your provider-issued profile at `/srv/appdata/agent-media/gluetun/provider.tcp.ovpn`. Include any referenced provider files in the bind-mounted directory. Run the following as the media operator. Enter the Plex token and VPN service credentials privately at the prompts.
+## How our setup works
 
-```sh
-cd /opt/agent-media
-python3 admin.py credentials
-python3 -c 'from getpass import getpass; from admin import secret_file; secret_file("plex_token", getpass("Plex token: ").strip())'
-python3 -m unittest -v test_media
-python3 admin.py preflight
-```
+Our agent uses SSH to call a media backend on a separate host. That host runs the torrent client in a VPN container's network namespace, keeps the credentials locally, and hardlinks completed video files into Plex. The example includes the sanitized service unit, Compose file, Python scripts and optional Samba configuration. Its VPN guard applies only to that implementation. [Deployment and recovery instructions](examples/homelab/README.md)
 
-### 3. Bootstrap and test the VPN before adding downloads
-
-On an initial empty stack, run the following as the operator in `/opt/agent-media`. The verifier needs working noninteractive sudo access for its `nsenter` network-namespace commands. Keep this privilege with the local operator. It is separate from the agent’s SSH interface.
-
-```sh
-python3 admin.py bootstrap
-python3 admin.py verify
-docker compose down
-sudo install -m 0644 agent-media.service /etc/systemd/system/agent-media.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now agent-media.service
-systemctl is-active agent-media.service
-python3 -c 'from media_backend import QB, guard; guard(QB()); print("VPN gate passed")'
-```
-
-Bootstrap configures qBittorrent with a random local password, binds it to `tun0` and sets the complete and incomplete directories. Verification compares host and VPN egress, checks a direct-interface request against a numeric destination, pauses Gluetun and drops the tunnel while qBittorrent is running, then recreates the pair and verifies recovery. It writes `vpn-accepted.json` locally after success. This is an intentional outage test for an empty queue with service supervision stopped.
-
-The live guard on **add** and **start** checks Gluetun health, the current network namespace, the configured interface and the acceptance fingerprint. The fingerprint covers image identities and Compose text. Reverify manually after changing the contents of a bind-mounted VPN profile or firewall configuration. For a populated service, preserve the queue and use a maintenance plan or an isolated empty stack to validate changes. The original verifier explicitly requires an empty queue. The deployed image tags are mutable; record the deployed image IDs when testing.
-
-### 4. Install the Hermes client and pin its SSH connection
-
-On the agent VM, copy the two skill directories into the agent account’s skills directory. Generate a dedicated key as that account if it does not already have one.
-
-```sh
-mkdir -p ~/.hermes/skills ~/.ssh
-chmod 700 ~/.ssh
-cp -R agent/skills/plex-torrent agent/skills/game-search ~/.hermes/skills/
-ssh-keygen -t ed25519 -f ~/.ssh/agent-media -C agent-media
-```
-
-The noninteractive client needs an unattended key or an available SSH agent. On the media host, append the following entry to the media operator’s `~/.ssh/authorized_keys`, replacing the sample key field with the new public key. Preserve other entries. The forced command shown here follows the installed key restrictions.
-
-```text
-restrict,command="/usr/bin/python3 /opt/agent-media/media_backend.py" ssh-ed25519 PUBLIC_KEY_FROM_AGENT agent-media
-```
-
-From a trusted administrator connection obtain the media host’s SSH host public key and fingerprint. Install its verified public key on the agent as a known-hosts line for the exact hostname in media.py, in `~/.ssh/agent-media-known-hosts`. Keep `StrictHostKeyChecking=yes`. The private SSH key stays on the agent. Test through the same entry point Hermes uses.
-
-```sh
-client="$HOME/.hermes/skills/plex-torrent/scripts/media.py"
-python3 "$client" status
-python3 "$client" libraries
-python3 "$client" search --query "Example Film"
-```
-
-### 5. Mount the optional shares
-
-Copy media-host/smb-shares.conf to the host’s Samba config directory and include it from smb.conf. Provision a dedicated local Samba account named `agent-media` with a private SMB password. Check that the account can reach only the intended shares. Run `testparm -s` and reload Samba after review. The force user must have the required filesystem access.
-
-On the VM, create `/mnt/agent/downloads` and `/mnt/agent/library`. As root, create `/etc/samba/credentials-agent-media` with mode 0600 and the two lines `username=agent-media` and `password=YOUR_SMB_PASSWORD`. Add the two adapted entries from agent/mounts/downloads-and-library.fstab to the existing fstab and run `systemctl daemon-reload`. Start the corresponding automount units or mount each path explicitly. Use `findmnt -T /mnt/agent/downloads/complete` to confirm CIFS. Test with a disposable file and verify the library path is readable. Request hardlink imports through the backend on the media host.
-
-## Try the workflows
-
-**Plex.** First exercise the download path with a publisher-provided test magnet. List torrents, start its exact hash and confirm the selected file completed. For a movie or show, inspect the file list, select the actual media, import into a discovered section and scan. The companion skill contains the exact arguments for movies, multi-episode packs, subtitle files and indexing checks. A filesystem import and a Plex catalog match are separate results.
-
-**Games.** Ask Hermes to “search for SuperTuxKart for Linux and list candidates.” This command exercises discovery without changing the queue:
-
-```sh
-python3 ~/.hermes/skills/game-search/scripts/search_games.py "SuperTuxKart" --platform Linux --details 3
-```
-
-A candidate is a source page, not proof of authenticity or availability. For a requested download, match the publisher, platform and contents first, then hand the chosen magnet to the existing media client. Return the completed file path on the share. Keep large extractions on bulk storage and verify the artifact before reporting it ready.
-
-## Troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| Service restarts every 15 seconds | Check the two ZFS dataset identities, the paths they cover, provider credentials and `docker compose config --quiet`. Review the unit journal locally. |
-| VPN healthy yesterday; adding now fails | Inspect both container states, interface binding and acceptance. Recreate both containers together after a VPN container replacement. |
-| Zero bytes left at 0% | Wait for metadata and numeric progress. The queue can report zero remaining before the client knows the files. |
-| Import rejects the destination | Check section, actual file index, extension, source size, ownership and filesystem identity. A different existing destination is preserved. |
-| Scan succeeds but title is missing | Check the Plex path mapping, permissions and naming, then query again after indexing. |
-| Game search returns nothing | Check spelling/platform and inspect the indexer’s HTML for a layout change. Plex title search queries the local library. |
-| Packed game fills the agent disk | Inspect the manifest and free space; budget for both input and expanded output on the media host. |
-
-## Verification of this edition
-
-The service and Compose behavior were checked against the deployed host. The included tests exercise the sanitized backend with fixtures. The search helper was exercised with a public game query. The bundle is a portable reference for an existing Plex installation; each recipient supplies their own storage, VPN profile, credentials and host trust, then runs their own first-activation test.
+See the [fresh VM walkthrough](docs/fresh-vm-test.md) for the access test and its limits.
