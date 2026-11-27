@@ -8,6 +8,14 @@ Use Hermes to browse a Plex directory, import a completed film or show, or searc
 | In a VM or container | The same everyday skills in the guest. Give the host skill to an agent on the media host if needed. | For browsing, the operator exports one media folder read-only and mounts it in the guest. Online game search can run with no host share at all. |
 | Separate agent with VPN-isolated downloads | The everyday skills, plus the host skill if useful. | Your existing download integration, or the optional reference deployment with Gluetun, qBittorrent and a restricted SSH backend. |
 
+## Our homelab example with qBittorrent and Gluetun
+
+On our media host, Gluetun establishes an OpenVPN tunnel. qBittorrent shares its network namespace, waits for Gluetun’s health check, and binds torrent traffic to `tun0`. The qBittorrent Web UI is published at `127.0.0.1:18080` on that host. Hermes searches from its own network connection. [Sanitized Compose file](examples/homelab/media-host/compose.yml)
+
+To run the download stack under host control, follow steps 1–3 of the example. They cover storage, private VPN credentials, qBittorrent setup and an empty-queue test that drops the tunnel and checks for traffic escaping it. You can stop there and operate qBittorrent on the media host. [Host setup and recovery guide](examples/homelab/README.md)
+
+In our deployment we also chose step 4, which gives Hermes a dedicated SSH key restricted to the media backend. That lets the VM request downloads, hardlink completed videos into Plex and trigger library scans. An operator who only wants Hermes to browse can use the read-only share described below.
+
 ## Run Hermes in a VM without host SSH
 
 For browsing, choose the Movies or TV folder you want Hermes to see. On the host, use your hypervisor to export just that folder read-only. Then mount it read-only inside the VM. An existing SMB share with a read-only server-side grant also works. The host operator handles the export. Hermes runs its checks from inside the guest as its ordinary user.
@@ -40,9 +48,3 @@ If your host assistant uses a different skill directory, give it the entire `hos
 2. Tell it the exact path and scope, for example: **“Hermes runs here. I only want it to list the Movies directory at /srv/media/Movies.”** If Hermes runs in a VM, tell it both the host path and the path mounted inside the VM, if known.
 3. The agent checks as the intended user. If access is denied, it explains the smallest permission change the operator can make. Ask it to recheck after the change. Listing one directory does not establish permission to read every descendant or import a file.
 4. For everyday use, try **“List the movie folders here,”** **“Import this completed film into Movies,”** or **“Find Linux releases of SuperTuxKart and show the candidates.”** Searching for games does not enqueue a download.
-
-## Optional example: our SSH media backend
-
-We chose to give our VM a dedicated SSH key so Hermes can request downloads, hardlink imports and Plex scans on the media host. The host restricts that key to one backend command. Anyone holding the key can request the media operations that backend permits. The Plex and VPN credentials stay on the host.
-
-The SSH client, key setup, VPN containers and writable Samba configuration are packaged under `examples/homelab/`. Install this example only if you want that level of access. [Deployment and recovery instructions](examples/homelab/README.md)

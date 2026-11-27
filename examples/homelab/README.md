@@ -1,6 +1,8 @@
-# Optional homelab deployment with restricted SSH
+# Homelab example with qBittorrent and Gluetun
 
-Use this deployment if you want the VM to hold a dedicated credential that can call the host media backend. For an isolated VM with a read-only media folder, use the [VM walkthrough](../../docs/fresh-vm-test.md). The Samba templates in this example grant writes to the configured directories.
+Steps 1–3 set up qBittorrent and Gluetun on the media host. Once the host checks pass, the operator can manage the queue locally at `http://127.0.0.1:18080` using the qBittorrent credentials created during bootstrap. [Compose file](media-host/compose.yml) · [Host setup and verification script](media-host/admin.py)
+
+Step 4 is an independent choice to let Hermes call the media backend over restricted SSH. Step 5 shows our optional writable Samba shares. For an isolated VM that only needs to browse, export the chosen folder read-only. [VM walkthrough](../../docs/fresh-vm-test.md)
 
 A Hermes agent can take a request such as “add this film to Plex” or “find the Linux edition of this game.” The two requests share a download client. A film ends up in a Plex library as a hardlink. A game search returns candidates, and a requested game download stays on the downloads share.
 
@@ -26,7 +28,7 @@ The everyday SKILL.md files condense the deployed workflows for a new installati
 
 Paths below assume you are in `examples/homelab/` in the unpacked release when copying files. Edit the client endpoint in the copy of `media.py` you install on the agent.
 
-Use a Linux media host with ZFS, Docker Engine, the Docker Compose plugin, systemd, OpenSSH, Python 3.9+ and an existing Plex server. The agent needs Python and OpenSSH. Samba on the host and cifs-utils on the agent are needed only for direct file access. The deployed VPN uses NordVPN service credentials and a provider-issued TCP OpenVPN profile. Other providers may require changes to the credential prompts, secret names or Compose configuration.
+Use a Linux media host with ZFS, Docker Engine, the Docker Compose plugin, systemd and Python 3.9+. The Plex integration assumes an existing Plex server. The optional SSH integration in step 4 needs OpenSSH on both machines and Python on the agent. Samba on the host and cifs-utils on the agent are needed only for direct file access. The deployed VPN uses NordVPN service credentials and a provider-issued TCP OpenVPN profile. Other providers may require changes to the credential prompts, secret names or Compose configuration.
 
 ### 1. Set the site values
 
@@ -60,11 +62,12 @@ sudo install -d -o mediaops -g mediaops /srv/appdata/agent-media/{gluetun,qbitto
 
 Run the brace-expansion commands in Bash. Ensure the operator can create library destinations and hardlink the downloaded files, and Plex can read the results. Compare the device numbers of the download and library directories with `stat -c '%d %n' /srv/media/downloads/agent /srv/media/library`.
 
-Place your provider-issued profile at `/srv/appdata/agent-media/gluetun/provider.tcp.ovpn`. Include any referenced provider files in the bind-mounted directory. Run the following as the media operator. Enter the Plex token and VPN service credentials privately at the prompts.
+Place your provider-issued profile at `/srv/appdata/agent-media/gluetun/provider.tcp.ovpn`. Include any referenced provider files in the bind-mounted directory. Run the following as the media operator. Enter the VPN service credentials privately at the prompt. The Plex token command is only for operators enabling Plex catalog queries or scans.
 
 ```sh
 cd /opt/agent-media
 python3 admin.py credentials
+# Optional Plex integration
 python3 -c 'from getpass import getpass; from admin import secret_file; secret_file("plex_token", getpass("Plex token: ").strip())'
 python3 -m unittest -v test_media
 python3 admin.py preflight
